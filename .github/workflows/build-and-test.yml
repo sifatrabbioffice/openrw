@@ -27,12 +27,11 @@ jobs:
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. CMakeLists.txt ফাইলের বুস্ট কনফিগ প্যাচ করা
-      - name: Patch CMakeLists for Boost
+      # ২. CMakeLists.txt ফাইলের বুস্ট এবং ওপেনজিএল কনফিগ প্যাচ করা
+      - name: Patch CMakeLists for iOS Compatibility
         run: |
+          # বুস্ট ফিক্স
           sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
-          
-          # এখানে হার্ডকোড করে হোমব্রিউ-এর বুস্ট পাথ ইনজেক্ট করে দেওয়া হচ্ছে
           sed -i '' '/find_package(Boost REQUIRED)/a\
           set(Boost_INCLUDE_DIRS /opt/homebrew/include)\
           set(Boost_LIBRARY_DIRS /opt/homebrew/lib)\
@@ -44,7 +43,15 @@ jobs:
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
 
-      # ৩. Xcode এবং iOS SDK কনফিগারেশন (উইথ হোমব্রিউ রুট পাথ ফোর্স)
+          # ওপেনজিএল ফিক্স: iOS এর জন্য OpenGL রিকোয়ারমেন্টকে মক (Mock) করা
+          # এটি CMake-কে জোরপূর্বক বলবে যে ওপেনজিএল পাওয়া গেছে এবং iOS SDK এর ওপেনজিএল ফ্রেমওয়ার্ক পাথটি ধরিয়ে দেবে
+          sed -i '' '/find_package(OpenGL REQUIRED)/c\
+          set(OPENGL_FOUND TRUE)\
+          set(OPENGL_INCLUDE_DIR /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk/System/Library/Frameworks/OpenGLES.framework/Headers)\
+          set(OPENGL_LIBRARIES "-framework OpenGLES")\
+          ' CMakeLists.txt
+
+      # ৩. Xcode এবং iOS SDK কনফিগারেশন
       - name: Configure CMake for iOS
         run: |
           mkdir build
@@ -73,7 +80,6 @@ jobs:
         run: |
           mkdir -p build/Payload
           
-          # বিল্ড হওয়া মূল .app ডিরেক্টরি খুঁজে বের করে Payload-এ কপি করা
           APP_PATH=$(find build -name "*.app" -type d | head -n 1)
           echo "Found App Bundle at: $APP_PATH"
           
@@ -84,11 +90,10 @@ jobs:
           
           cp -r "$APP_PATH" build/Payload/
           
-          # Payload ফোল্ডারটিকে জিপ করে .ipa তৈরি করা
           cd build
           zip -r openrw-sideload.ipa Payload/
 
-      # ৬. Sideload করার জন্য প্রস্তুত .ipa ফাইলটি আপলোড করা
+      # ৬. আর্টফ্যাক্ট আপলোড করা
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
