@@ -32,37 +32,30 @@ jobs:
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$(brew --prefix boost):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
 
-      # ২. সাব-মডিউলসহ সব ফাইলের বুস্ট লিঙ্কিং প্যাচ করা
+      # ২. সাব-মডিউলসহ সব ফাইলের বুস্ট লিঙ্কিং এবং হেডার পাথ পারফেক্টলি সেট করা
       - name: Patch CMakeLists for Boost Targets
         run: |
           # মেইন ফাইলের কম্পোনেন্ট রিকোয়েস্ট রিমুভ করা
           sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
           
-          # গ্লোবাল বুস্ট ডিরেক্টরি ইনক্লুড করা
+          # গ্লোবাল বুস্ট ডিরেক্টরি এবং সুনির্দিষ্ট লাইব্রেরি ভ্যারিয়েবল ইনজেক্ট করা
           sed -i '' '/find_package(Boost REQUIRED)/a\
           include_directories(${Boost_INCLUDE_DIRS})\
           link_directories(${Boost_LIBRARY_DIRS})\
+          set(Boost_LIBRARIES boost_system boost_program_options)\
           ' CMakeLists.txt
           
-          # সাব-ফাইলগুলোতে Boost:: টার্গেটগুলোকে সরাসরি ভ্যারিয়েবল দিয়ে রিপ্লেস করা
-          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::program_options/${Boost_LIBRARIES}/g' {} +
-          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/${Boost_LIBRARIES}/g' {} +
-          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/${Boost_LIBRARIES}/g' {} +
+          # সাব-ফাইলগুলোতে (rwgame, rwrender ইত্যাদি) ওল্ড টার্গেটগুলোকে ইউনিভার্সাল বুস্ট টার্গেটে রূপান্তর
+          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::program_options/boost_program_options/g' {} +
+          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
+          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
 
-      # ৩. পরিচ্ছন্ন CMake কনফিগারেশন (সরাসরি বুস্টের বাইনারি লাইব্রেরি লিঙ্ক করা)
+      # ৩. পরিচ্ছন্ন CMake কনফিগারেশন
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          
-          # Homebrew-এর বুস্ট লাইব্রেরি পাথ এবং নির্দিষ্ট লাইব্রেরি ফাইল এক্সপ্লিসিটলি পাস করা হচ্ছে
-          # এটি linker-কে সরাসরি libboost_program_options এবং libboost_system চিনিয়ে দেবে
-          BOOST_LIB_DIR=$(brew --prefix boost)/lib
-          
-          cmake .. -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_EXE_LINKER_FLAGS="-L${BOOST_LIB_DIR} -lboost_program_options -lboost_system" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-L${BOOST_LIB_DIR} -lboost_program_options -lboost_system"
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
       # ৪. প্রজেক্ট বিল্ড করা
       - name: Build Project
@@ -75,4 +68,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openrw-macos-build
-          path: build/rwgame/rwgame
+          path: build/
