@@ -1,20 +1,54 @@
-steps:
-      - name: Checkout
+name: Build and Test (macOS)
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  # Allow to run manually
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+  ALSOFT_DRIVERS: "null"
+
+jobs:
+  macos-build:
+    name: macOS Build
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # macOS-এর জন্য প্রয়োজনীয় ডিপেনডেন্সি ইনস্টল করার স্টেপ
-      - name: Install Dependencies (macOS)
+      # ১. macOS-এর জন্য সব প্রয়োজনীয় ডিপেনডেন্সি ইনস্টল করা
+      - name: Install dependencies (Homebrew)
         run: |
           brew update
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
-          # Qt5 এর পাথ সেট করা যেন CMake এটি খুঁজে পায়
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          # Qt5 এবং OpenAL এর পাথ এনভায়রনমেন্টে যুক্ত করা যেন CMake এগুলো খুঁজে পায়
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
 
-      - name: Configure and Build
+      # ২. বিল্ড ডিরেক্টরি তৈরি এবং CMake কনফিগারেশন করা
+      - name: Configure CMake
         run: |
-          mkdir build && cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build .
+          mkdir build
+          cd build
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      # ৩. প্রজেক্টটি কম্পাইল/বিল্ড করা
+      - name: Build Project
+        run: |
+          cd build
+          cmake --build . --config ${{ env.BUILD_TYPE }}
+
+      # ৪. (ঐচ্ছিক) বিল্ড হওয়া ফাইলটি ডাউনলোড করার জন্য সংরক্ষণ করা
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openrw-macos-build
+          path: build/
