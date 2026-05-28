@@ -27,7 +27,7 @@ jobs:
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. CMakeLists.txt, প্ল্যাটফর্ম চেক এবং বান্ডেল ডেস্টিনেশন প্যাচ করা
+      # ২. CMakeLists.txt এবং প্ল্যাটফর্ম চেক প্যাচ করা
       - name: Patch CMakeLists and Platform Checks for iOS
         run: |
           # বুস্ট ফিক্স
@@ -55,13 +55,8 @@ jobs:
             sed -i '' 's/message(FATAL_ERROR "Unknown platform/message(STATUS "Forcing iOS Platform Build/g' cmake_configure.cmake
           fi
 
-          # বান্ডেল ডেস্টিনেশন ফিক্স (ক্রিটিক্যাল এরর সমাধান)
-          # এটি cmake_configure.cmake ফাইলের install() ব্লকে BUNDLE DESTINATION ফোর্সবলি ইনজেক্ট করবে
-          if [ -f cmake_configure.cmake ]; then
-            sed -i '' 's/RUNTIME DESTINATION bin/RUNTIME DESTINATION bin BUNDLE DESTINATION bin/g' cmake_configure.cmake
-          fi
-
       # ৩. Xcode জেনারেটর ব্যবহার করে আইওএস টার্গেটে কনফিগারেশন করা
+      # এখানে গ্লোবাল বান্ডেল ডেস্টিনেশন ফ্ল্যাগগুলো যুক্ত করা হয়েছে যা ২৩১ নম্বর লাইনের এররটি সরাসরি ওভাররাইড করবে
       - name: Configure CMake for iOS
         run: |
           mkdir build
@@ -70,6 +65,8 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_INSTALL_BUNDLEDIR="bin" \
+            -DCMAKE_INSTALL_BINDIR="bin" \
             -DCMAKE_PREFIX_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
@@ -85,7 +82,7 @@ jobs:
           cd build
           cmake --build . --config ${{ env.BUILD_TYPE }} -- -sdk iphoneos
 
-      # ৫. বিল্ড হওয়া .app ফাইলকে Sideloadable .ipa ফাইলে প্যাকেজিং করা
+      # ۵. বিল্ড হওয়া .app ফাইলকে Sideloadable .ipa ফাইলে প্যাকেজিং করা
       - name: Package into Sideloadable .ipa
         run: |
           mkdir -p build/Payload
