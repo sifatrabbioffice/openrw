@@ -27,7 +27,7 @@ jobs:
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. শুধুমাত্র ডিপেনডেন্সি লিংক ফিক্স করা (কোনো কাস্টম স্ক্রিপ্ট বা ফাইল মডিফাই ছাড়া)
+      # ২. ডিপেনডেন্সি এবং মডার্ন OpenGL::GL টার্গেট মক করা
       - name: Patch Dependencies Path
         run: |
           # বুস্ট লাইব্রেরি ফিক্স
@@ -43,15 +43,18 @@ jobs:
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
 
-          # ওপেনজিএল ফিক্স
+          # ওপেনজিএল এবং মডার্ন OpenGL::GL ইন্টারফেস ফিক্স (চূড়ান্ত সমাধান)
           sed -i '' '/find_package(OpenGL REQUIRED)/c\
           set(OPENGL_FOUND TRUE)\
           set(OPENGL_INCLUDE_DIR /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk/System/Library/Frameworks/OpenGLES.framework/Headers)\
           set(OPENGL_LIBRARIES "-framework OpenGLES")\
+          if(NOT TARGET OpenGL::GL)\
+            add_library(OpenGL::GL INTERFACE IMPORTED)\
+            set_target_properties(OpenGL::GL PROPERTIES INTERFACE_LINK_LIBRARIES "-framework OpenGLES")\
+          endif()\
           ' CMakeLists.txt
 
-      # ৩. ট্রিকি কনফিগারেশন: Ninja জেনারেটর ব্যবহার করে আইওএস SDK ফোর্স করা
-      # এটি "Unknown platform" এবং "BUNDLE DESTINATION" দুটি এররকেই একসাথে ফাঁকি দেবে
+      # ৩. ক্রস-কম্পাইল কনফিগারেশন (Ninja জেনারেটর ব্যবহার করে)
       - name: Configure CMake
         run: |
           mkdir build
