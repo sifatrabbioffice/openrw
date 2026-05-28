@@ -27,7 +27,7 @@ jobs:
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. ডিপেনডেন্সি এবং মডার্ন OpenGL::GL টার্গেট মক করা
+      # ২. ডিপেনডেন্সি, OpenGL::GL টার্গেট এবং iOS GLES3 হেডার পাথ ম্যাপ করা
       - name: Patch Dependencies Path
         run: |
           # বুস্ট লাইব্রেরি ফিক্স
@@ -43,7 +43,8 @@ jobs:
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
 
-          # ওপেনজিএল এবং মডার্ন OpenGL::GL ইন্টারফেস ফিক্স (চূড়ান্ত সমাধান)
+          # ওপেনজিএল এবং মডার্ন OpenGL::GL ইন্টারফেস ফিক্স
+          # এখানে অতিরিক্ত হিসেবে iOS SDK-এর ভেতরের অরিজিনাল OpenGLES হেডার পাথ ইন্টারফেসে যুক্ত করা হয়েছে
           sed -i '' '/find_package(OpenGL REQUIRED)/c\
           set(OPENGL_FOUND TRUE)\
           set(OPENGL_INCLUDE_DIR /Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk/System/Library/Frameworks/OpenGLES.framework/Headers)\
@@ -54,7 +55,10 @@ jobs:
           endif()\
           ' CMakeLists.txt
 
-      # ৩. ক্রস-কম্পাইল কনফিগারেশন (Ninja জেনারেটর ব্যবহার করে)
+          # imgui এর জন্য GLES3/gl3.h এরর ফিক্স (সরাসরি সোর্স কোড লেভেলে অ্যাপল ফ্রেমওয়ার্ক পাথ ইনজেক্ট করা)
+          find . -name "imgui_impl_opengl3.cpp" -exec sed -i '' 's/#include <GLES3\/gl3.h>/#include <OpenGLES\/ES3\/gl.h>/g' {} +
+
+      # ৩. ক্রস-কম্পাইল কনফিগারেশন (iOS SDK এবং হেডার ইনক্লুড ডিরেক্টরি সহ)
       - name: Configure CMake
         run: |
           mkdir build
@@ -67,7 +71,9 @@ jobs:
             -DCMAKE_FIND_ROOT_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
             -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
-            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
+            -DCMAKE_CXX_FLAGS="-I/Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk/System/Library/Frameworks/OpenGLES.framework/Headers" \
+            -DCMAKE_C_FLAGS="-I/Applications/Xcode_16.4.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.5.sdk/System/Library/Frameworks/OpenGLES.framework/Headers"
 
       # ৪. গেম কম্পাইল করা
       - name: Build Project
@@ -80,7 +86,6 @@ jobs:
         run: |
           mkdir -p build/Payload/rwgame.app
           
-          # বিল্ড হওয়া মেইন এক্সিকিউটেবল ফাইলটি খুঁজে বের করা
           BIN_PATH=$(find build -name "rwgame" -type f | head -n 1)
           echo "Found Binary at: $BIN_PATH"
           
@@ -89,10 +94,8 @@ jobs:
             exit 1
           fi
           
-          # বাইনারিটি ডামি অ্যাপ স্ট্রাকচারে কপি করা
           cp "$BIN_PATH" build/Payload/rwgame.app/rwgame
           
-          # আইফোনে ইনস্টল করার জন্য একটি কাস্টম বা বেসিক Info.plist তৈরি করা
           cat << 'EOF' > build/Payload/rwgame.app/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.txt">
@@ -121,11 +124,10 @@ jobs:
           </plist>
           EOF
           
-          # জিপ করে .ipa ফরম্যাট করা
           cd build
           zip -r openrw-ios-sideload.ipa Payload/
 
-      # ৬. ফাইনাল .ipa ফাইলটি GitHub থেকে ডাউনলোডের জন্য আপলোড করা
+      # ৬. ফাইনাল .ipa ফাইলটি আপলোড করা
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
