@@ -28,33 +28,40 @@ jobs:
           brew update
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
-          # এখানে একসাথে সবকিছুর পাথ CMAKE_PREFIX_PATH-এ ইনজেক্ট করা হচ্ছে
-          # বিশেষ করে boost এবং তার সাব-মডিউলগুলোর সঠিক লিঙ্কিংয়ের জন্য এটি জরুরি
-          BOOST_PREFIX=$(brew --prefix boost)
-          QT_PREFIX=$(brew --prefix qt@5)
-          OPENAL_PREFIX=$(brew --prefix openal-soft)
-          
-          echo "CMAKE_PREFIX_PATH=${BOOST_PREFIX}:${BOOST_PREFIX}/lib/cmake:${QT_PREFIX}:${OPENAL_PREFIX}:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
-          echo "PATH=${QT_PREFIX}/bin:$PATH" >> $GITHUB_ENV
+          # পাথ সেট করা
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$(brew --prefix boost):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
 
-      # ২. পরিচ্ছন্ন CMake কনফিগারেশন (সরাসরি সিস্টেম ডিরেক্টরি পয়েন্ট করে)
+      # ২. ম্যাজিক স্টেপ: OpenRW-এর CMakeLists.txt ফাইল প্যাচ/মডিফাই করা
+      - name: Patch CMakeLists.txt for Boost Components
+        run: |
+          # CMakeLists.txt ফাইলের ভেতর যেখানে নির্দিষ্ট কম্পোনেন্ট (system, program_options) চাওয়া হয়েছে, 
+          # সেটিকে পরিবর্তন করে শুধু গ্লোবাল Boost খোঁজার কমান্ডে রূপান্তর করা হচ্ছে।
+          sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
+          
+          # লাইঙ্কিং এরর এড়াতে বুস্টের হেডার ও লাইব্রেরি গ্লোবালি ডিক্লেয়ার করা
+          sed -i '' '/find_package(Boost REQUIRED)/a\
+          include_directories(${Boost_INCLUDE_DIRS})\
+          link_directories(${Boost_LIBRARY_DIRS})\
+          ' CMakeLists.txt
+
+      # ৩. পরিচ্ছন্ন CMake কনফিগারেশন
       - name: Configure CMake
         run: |
           mkdir build
           cd build
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DBOOST_ROOT=$(brew --prefix boost) \
-            -DBOOST_INCLUDEDIR=$(brew --prefix boost)/include \
-            -DBOOST_LIBRARYDIR=$(brew --prefix boost)/lib
+            -DBoost_NO_BOOST_CMAKE=ON \
+            -DBOOST_ROOT=$(brew --prefix boost)
 
-      # ৩. প্রজেক্ট বিল্ড করা
+      # ৪. প্রজেক্ট বিল্ড করা
       - name: Build Project
         run: |
           cd build
           cmake --build . --config ${{ env.BUILD_TYPE }}
 
-      # ৪. বিল্ড হওয়া ফাইলটি আপলোড করা
+      # ৫. বিল্ড হওয়া ফাইলটি আপলোড করা
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
