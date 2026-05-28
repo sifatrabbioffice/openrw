@@ -13,7 +13,7 @@ env:
 jobs:
   ios-build:
     name: iOS IPA Build
-    runs-on: macos-14
+    runs-on: macos-latest
 
     steps:
       - name: Checkout repository
@@ -21,20 +21,26 @@ jobs:
         with:
           submodules: recursive
 
-      # ১. ডিপেনডেন্সি ইনস্টল করা (এরর দেওয়া toolchains প্যাকেজটি বাদ দেওয়া হয়েছে)
-      # বুস্টকে iOS ফ্রেমওয়ার্ক হিসেবে ডাউনলোড/বিল্ড করার জন্য গ্লোবাল হোমব্রু বুস্ট এড়িয়ে চলাই ভালো
-      # তাই বুস্ট ছাড়া বাকি প্রয়োজনীয় হেডার লাইব্রেরিগুলো নেওয়া হচ্ছে
-       Tar: install build tools
+      # ১. ডিপেনডেন্সি ইনস্টল করা (ব্যর্থ প্যাকেজটি বাদ দেওয়া হয়েছে)
       - name: Install Dependencies
         run: |
           brew update
-          brew install cmake ninja glm freetype sdl2 openal-soft ffmpeg bullet
-          
-          # iOS এর জন্য এনভায়রনমেন্ট পাথ সেটআপ
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix openal-soft):$(brew --prefix glm):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. CMake কে iOS আর্কিটেকচারে (Xcode Generator) কনফিগার করা
-      # কোনো এক্সটার্নাল টুলচেইন ফাইল ছাড়া সরাসরি Xcode SDK কে টার্গেট করা হয়েছে
+      # ২. CMakeLists.txt ফাইলের বুস্ট কনফিগ প্যাচ করা (আগের মতো)
+      - name: Patch CMakeLists for Boost
+        run: |
+          sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
+          sed -i '' '/find_package(Boost REQUIRED)/a\
+          include_directories(${Boost_INCLUDE_DIRS})\
+          link_directories(${Boost_LIBRARY_DIRS})\
+          ' CMakeLists.txt
+          
+          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::program_options/boost_program_options/g' {} +
+          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
+          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
+
+      # ৩. Xcode এবং iOS SDK ব্যবহার করে arm64 আর্কিটেকচারে কনফিগারেশন
       - name: Configure CMake for iOS
         run: |
           mkdir build
@@ -45,36 +51,37 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
-            -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM="" \
-            -DBoost_NO_BOOST_CMAKE=ON
+            -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=""
 
-      # ৩. Xcode বিল্ড রান করা (সরাসরি iPhone OS SDK দিয়ে কম্পাইল)
-      - name: Build App Package Using Xcode
+      # ৪. Xcode বিল্ড রান করা
+      - name: Build App Using Xcode
         run: |
           cd build
           cmake --build . --config ${{ env.BUILD_TYPE }} -- -sdk iphoneos
 
-      # ৪. বিল্ড হওয়া .app কে Sideloadable .ipa ফাইলে প্যাকেজিং করা
-      - name: Package Bundle into Sideloadable .ipa
+      # ৫. বিল্ড হওয়া .app কে Sideloadable .ipa ফাইলে রূপান্তর করা
+      - name: Package into Sideloadable .ipa
         run: |
           mkdir -p build/Payload
           
-          # জেনারেট হওয়া .app ফাইলটি খুঁজে বের করে Payload ডিরেক্টরিতে কপি করা
+          # বিল্ড হওয়া মূল .app ডিরেক্টরি খুঁজে বের করে Payload-এ কপি করা
           APP_PATH=$(find build -name "*.app" -type d | head -n 1)
+          echo "Found App Bundle at: $APP_PATH"
+          
           if [ -z "$APP_PATH" ]; then
-            echo "Error: .app bundle not found! Build might have failed."
+            echo "Error: No .app bundle found!"
             exit 1
           fi
-          echo "Found App Bundle at: $APP_PATH"
+          
           cp -r "$APP_PATH" build/Payload/
           
-          # Payload ফোল্ডারটিকে জিপ করে .ipa এক্সটেনশন দেওয়া
+          # Payload ফোল্ডারটিকে জিপ করে .ipa তৈরি করা
           cd build
-          zip -r openrw-ios-sideload.ipa Payload/
+          zip -r openrw-sideload.ipa Payload/
 
-      # ৫. Sideload করার জন্য প্রস্তুত .ipa ফাইলটি আপলোড করা
+      # ৬. Sideload করার জন্য প্রস্তুত .ipa ফাইলটি আপলোড করা
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: openrw-ios-sideload
-          path: build/openrw-ios-sideload.ipa
+          path: build/openrw-sideload.ipa
