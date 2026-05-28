@@ -27,7 +27,7 @@ jobs:
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. CMakeLists.txt এবং প্ল্যাটফর্ম চেক সম্পূর্ণ রিরাইট/প্যাচ করা
+      # ২. CMakeLists.txt এবং প্ল্যাটফর্ম চেক প্যাচ করা
       - name: Patch CMakeLists and Platform Checks for iOS
         run: |
           # বুস্ট ফিক্স
@@ -55,25 +55,14 @@ jobs:
             sed -i '' 's/message(FATAL_ERROR "Unknown platform/message(STATUS "Forcing iOS Platform Build/g' cmake_configure.cmake
           fi
 
-          # বান্ডেল ডেস্টিনেশন ফিক্স (বিকল্প ও চরম কার্যকরী পদ্ধতি)
-          # ত্রুটিপূর্ণ install() কমান্ডের পুরো ফাংশন ব্লকে 'BUNDLE DESTINATION bin' জোরপূর্বক ঢুকিয়ে দেওয়া হচ্ছে
+          # ওল্ড মডিফাই করা ম্যাক্রো স্ক্রিপ্ট যদি থেকে থাকে তবে তা পরিষ্কার করতে এবং 
+          # অরিজিনাল ফাইলে যেন কোনো ত্রুটি না থাকে তা নিশ্চিত করতে এই ক্লিনিং স্টেপ
           if [ -f cmake_configure.cmake ]; then
-            cat << 'EOF' >> cmake_configure.cmake
-
-          # ওভাররাইড ওল্ড ইন্সটল লজিক ফর আইওএস বান্ডেল
-          macro(openrw_target_apply_options TARGET_NAME)
-              set_target_properties(${TARGET_NAME} PROPERTIES MACOSX_BUNDLE TRUE)
-              install(TARGETS ${TARGET_NAME}
-                  BUNDLE DESTINATION bin
-                  RUNTIME DESTINATION bin
-                  LIBRARY DESTINATION lib
-                  ARCHIVE DESTINATION lib
-              )
-          endmacro()
-          EOF
+            sed -i '' 's/RUNTIME DESTINATION bin/RUNTIME DESTINATION bin BUNDLE DESTINATION bin/g' cmake_configure.cmake || true
           fi
 
       # ৩. Xcode জেনারেটর ব্যবহার করে আইওএস টার্গেটে কনফিগারেশন করা
+      # এখানে গ্লোবাল CMAKE_MACOSX_BUNDLE ফ্ল্যাগ যুক্ত করা হয়েছে যা কোনো কোড মডিফাই ছাড়াই কাজ করবে
       - name: Configure CMake for iOS
         run: |
           mkdir build
@@ -82,6 +71,7 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_MACOSX_BUNDLE=ON \
             -DCMAKE_PREFIX_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
