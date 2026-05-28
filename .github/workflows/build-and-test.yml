@@ -28,31 +28,33 @@ jobs:
           brew update
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
-          # পাথ কনফিগারেশন
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
-          echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
+          # এখানে একসাথে সবকিছুর পাথ CMAKE_PREFIX_PATH-এ ইনজেক্ট করা হচ্ছে
+          # বিশেষ করে boost এবং তার সাব-মডিউলগুলোর সঠিক লিঙ্কিংয়ের জন্য এটি জরুরি
+          BOOST_PREFIX=$(brew --prefix boost)
+          QT_PREFIX=$(brew --prefix qt@5)
+          OPENAL_PREFIX=$(brew --prefix openal-soft)
+          
+          echo "CMAKE_PREFIX_PATH=${BOOST_PREFIX}:${BOOST_PREFIX}/lib/cmake:${QT_PREFIX}:${OPENAL_PREFIX}:$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          echo "PATH=${QT_PREFIX}/bin:$PATH" >> $GITHUB_ENV
 
-      # ২. সবচেয়ে গুরুত্বপূর্ণ ট্রিক: ঝামেলাকারী CMake কনফিগ ফাইলগুলো মুছে ফেলা
-      - name: Remove problematic Boost CMake configs
-        run: |
-          # Homebrew-এর বুস্টের ভেতরের ত্রুটিপূর্ণ cmake ফোল্ডারটি সম্পূর্ণ ডিলিট করে দেওয়া হচ্ছে
-          rm -rf $(brew --prefix boost)/lib/cmake/Boost-1.90.0
-          rm -rf $(brew --prefix boost)/lib/cmake/boost_*
-
-      # ৩. সহজ ও সাধারণ CMake কনফিগারেশন
+      # ২. পরিচ্ছন্ন CMake কনফিগারেশন (সরাসরি সিস্টেম ডিরেক্টরি পয়েন্ট করে)
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DBOOST_ROOT=$(brew --prefix boost) \
+            -DBOOST_INCLUDEDIR=$(brew --prefix boost)/include \
+            -DBOOST_LIBRARYDIR=$(brew --prefix boost)/lib
 
-      # ৪. প্রজেক্ট বিল্ড করা
+      # ৩. প্রজেক্ট বিল্ড করা
       - name: Build Project
         run: |
           cd build
           cmake --build . --config ${{ env.BUILD_TYPE }}
 
-      # ৫. বিল্ড হওয়া ফাইলটি আপলোড করা
+      # ৪. বিল্ড হওয়া ফাইলটি আপলোড করা
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
