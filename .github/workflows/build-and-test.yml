@@ -5,7 +5,6 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
-  # Allow to run manually
   workflow_dispatch:
 
 env:
@@ -23,30 +22,34 @@ jobs:
         with:
           submodules: recursive
 
-      # ১. macOS-এর জন্য সব প্রয়োজনীয় ডিপেনডেন্সি ইনস্টল করা
+      # ১. ডিপেনডেন্সি ইনস্টল করা
       - name: Install dependencies (Homebrew)
         run: |
           brew update
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
-          # Qt5 এবং OpenAL এর পাথ এনভায়রনমেন্টে যুক্ত করা যেন CMake এগুলো খুঁজে পায়
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          # পাথ কনফিগারেশন
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$(brew --prefix boost):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
 
-      # ২. বিল্ড ডিরেক্টরি তৈরি এবং CMake কনফিগারেশন করা
+      # ২. CMake কনফিগারেশন (Boost-এর জন্য সুনির্দিষ্ট ফ্ল্যাগসহ)
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DBoost_NO_BOOST_CMAKE=ON \
+            -DBOOST_ROOT=$(brew --prefix boost) \
+            -DBOOST_LIBRARYDIR=$(brew --prefix boost)/lib
 
-      # ৩. প্রজেক্টটি কম্পাইল/বিল্ড করা
+      # ৩. প্রজেক্ট বিল্ড করা
       - name: Build Project
         run: |
           cd build
           cmake --build . --config ${{ env.BUILD_TYPE }}
 
-      # ৪. (ঐচ্ছিক) বিল্ড হওয়া ফাইলটি ডাউনলোড করার জন্য সংরক্ষণ করা
+      # ৪. বিল্ড হওয়া ফাইলটি আপলোড করা
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
