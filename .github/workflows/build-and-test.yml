@@ -27,7 +27,7 @@ jobs:
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. CMakeLists.txt এবং প্ল্যাটফর্ম চেক প্যাচ করা
+      # ২. CMakeLists.txt এবং প্ল্যাটফর্ম চেক সম্পূর্ণ রিরাইট/প্যাচ করা
       - name: Patch CMakeLists and Platform Checks for iOS
         run: |
           # বুস্ট ফিক্স
@@ -55,8 +55,25 @@ jobs:
             sed -i '' 's/message(FATAL_ERROR "Unknown platform/message(STATUS "Forcing iOS Platform Build/g' cmake_configure.cmake
           fi
 
+          # বান্ডেল ডেস্টিনেশন ফিক্স (বিকল্প ও চরম কার্যকরী পদ্ধতি)
+          # ত্রুটিপূর্ণ install() কমান্ডের পুরো ফাংশন ব্লকে 'BUNDLE DESTINATION bin' জোরপূর্বক ঢুকিয়ে দেওয়া হচ্ছে
+          if [ -f cmake_configure.cmake ]; then
+            cat << 'EOF' >> cmake_configure.cmake
+
+          # ওভাররাইড ওল্ড ইন্সটল লজিক ফর আইওএস বান্ডেল
+          macro(openrw_target_apply_options TARGET_NAME)
+              set_target_properties(${TARGET_NAME} PROPERTIES MACOSX_BUNDLE TRUE)
+              install(TARGETS ${TARGET_NAME}
+                  BUNDLE DESTINATION bin
+                  RUNTIME DESTINATION bin
+                  LIBRARY DESTINATION lib
+                  ARCHIVE DESTINATION lib
+              )
+          endmacro()
+          EOF
+          fi
+
       # ৩. Xcode জেনারেটর ব্যবহার করে আইওএস টার্গেটে কনফিগারেশন করা
-      # এখানে গ্লোবাল বান্ডেল ডেস্টিনেশন ফ্ল্যাগগুলো যুক্ত করা হয়েছে যা ২৩১ নম্বর লাইনের এররটি সরাসরি ওভাররাইড করবে
       - name: Configure CMake for iOS
         run: |
           mkdir build
@@ -65,8 +82,6 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_INSTALL_BUNDLEDIR="bin" \
-            -DCMAKE_INSTALL_BINDIR="bin" \
             -DCMAKE_PREFIX_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
@@ -82,7 +97,7 @@ jobs:
           cd build
           cmake --build . --config ${{ env.BUILD_TYPE }} -- -sdk iphoneos
 
-      # ۵. বিল্ড হওয়া .app ফাইলকে Sideloadable .ipa ফাইলে প্যাকেজিং করা
+      # ৫. বিল্ড হওয়া .app ফাইলকে Sideloadable .ipa ফাইলে প্যাকেজিং করা
       - name: Package into Sideloadable .ipa
         run: |
           mkdir -p build/Payload
