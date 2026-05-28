@@ -28,22 +28,29 @@ jobs:
           brew update
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
-          # পাথ কনফিগারেশন
+          # পাথ এবং বুস্টের গ্লোবাল এনভায়রনমেন্ট ফ্ল্যাগ সেট করা
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
+          
+          # CMake-কে গ্লোবালি ফোর্স করা যেন সে বুস্টের নিজস্ব CMake কনফিগ ইগনোর করে
+          echo "Boost_NO_BOOST_CMAKE=ON" >> $GITHUB_ENV
 
-      # ২. CMake কনফিগারেশন (Boost-এর কড়া সিকিউরিটি বাইপাসসহ)
+      # ২. CMake কনফিগারেশন (উইন্ডো মেথড বাইপাস)
       - name: Configure CMake
         run: |
           mkdir build
           cd build
+          
+          # এখানে আমরা সরাসরি CMake-কে বুস্টের লাইব্রেরি ডিরেক্টরি ইনজেক্ট করে দিচ্ছি 
+          # যেন সে কোনো ফাইল স্ক্যান না করে সরাসরি বাইনারি খুঁজে নেয়
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DBoost_NO_BOOST_CMAKE=ON \
             -DBoost_NO_SYSTEM_PATHS=OFF \
             -DBOOST_ROOT=$(brew --prefix boost) \
             -DBOOST_LIBRARYDIR=$(brew --prefix boost)/lib \
-            -DBoost_DIR=/dev/null
+            -Dboost_system_DIR=$(brew --prefix boost)/lib/cmake/boost_system-1.90.0 \
+            -DBoost_INCLUDE_DIR=$(brew --prefix boost)/include
 
       # ৩. প্রজেক্ট বিল্ড করা
       - name: Build Project
