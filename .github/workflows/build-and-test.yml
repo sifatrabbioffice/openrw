@@ -28,34 +28,41 @@ jobs:
           brew update
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
-          # পাথ সেট করা
+          # CMAKE পাথ এবং গ্লোবাল লিঙ্কার ফ্ল্যাগ (LDFLAGS) সেট করা
+          # এটি ld লাইব্রেরি নট ফাউন্ড এররটি সরাসরি দূর করবে
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$(brew --prefix boost):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
+          
+          # ম্যাকের গ্লোবাল কম্পাইলার ও লিঙ্কারকে বুস্টের পাথ ফোর্স করা
+          echo "LDFLAGS=-L$(brew --prefix boost)/lib" >> $GITHUB_ENV
+          echo "CPPFLAGS=-I$(brew --prefix boost)/include" >> $GITHUB_ENV
 
-      # ২. সাব-মডিউলসহ সব ফাইলের বুস্ট লিঙ্কিং এবং হেডার পাথ পারফেক্টলি সেট করা
-      - name: Patch CMakeLists for Boost Targets
+      # ২. মেইন CMakeLists.txt ফাইলের বুস্ট কনফিগ প্যাচ করা
+      - name: Patch CMakeLists for Boost
         run: |
-          # মেইন ফাইলের কম্পোনেন্ট রিকোয়েস্ট রিমুভ করা
+          # মেইন ফাইলের কম্পোনেন্ট রিকোয়েস্ট রিমুভ করে গ্লোবাল রিকোয়েস্ট করা
           sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
           
-          # গ্লোবাল বুস্ট ডিরেক্টরি এবং সুনির্দিষ্ট লাইব্রেরি ভ্যারিয়েবল ইনজেক্ট করা
+          # গ্লোবাল বুস্ট ডিরেক্টরি এবং লিঙ্ক পাথ ইনজেক্ট করা
           sed -i '' '/find_package(Boost REQUIRED)/a\
           include_directories(${Boost_INCLUDE_DIRS})\
           link_directories(${Boost_LIBRARY_DIRS})\
-          set(Boost_LIBRARIES boost_system boost_program_options)\
           ' CMakeLists.txt
           
-          # সাব-ফাইলগুলোতে (rwgame, rwrender ইত্যাদি) ওল্ড টার্গেটগুলোকে ইউনিভার্সাল বুস্ট টার্গেটে রূপান্তর
+          # সাব-ফাইলগুলোতে ওল্ড নেমস্পেস টার্গেট বদলে স্ট্যান্ডার্ড নেমিংয়ে রূপান্তর
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::program_options/boost_program_options/g' {} +
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
 
-      # ৩. পরিচ্ছন্ন CMake কনফিগারেশন
+      # ৩. পরিচ্ছন্ন CMake কনফিগারেশন (লিঙ্ক ডিরেক্টরি সরাসরি পাস করে)
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+          cmake .. -G Ninja \
+            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_EXE_LINKER_FLAGS="-L/opt/homebrew/lib -L$(brew --prefix boost)/lib" \
+            -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/homebrew/lib -L$(brew --prefix boost)/lib"
 
       # ৪. প্রজেক্ট বিল্ড করা
       - name: Build Project
@@ -68,4 +75,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: openrw-macos-build
-          path: build/
+          path: build/rwgame/rwgame
