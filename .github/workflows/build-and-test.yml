@@ -21,16 +21,16 @@ jobs:
         with:
           submodules: recursive
 
-      # ১. ডিপেনডেন্সি ইনস্টল করা
+      # ১. প্রয়োজনীয় সব টুলস ইনস্টল করা
       - name: Install Dependencies
         run: |
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. শুধুমাত্র বুস্ট এবং ওপেনজিএল ডিপেনডেন্সি প্যাচ করা (কোনো ফাইল ব্রেকিং মডিফিকেশন ছাড়া)
-      - name: Patch CMakeLists for iOS Dependencies
+      # ২. শুধুমাত্র ডিপেনডেন্সি লিংক ফিক্স করা (কোনো কাস্টম স্ক্রিপ্ট বা ফাইল মডিফাই ছাড়া)
+      - name: Patch Dependencies Path
         run: |
-          # বুস্ট ফিক্স
+          # বুস্ট লাইব্রেরি ফিক্স
           sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
           sed -i '' '/find_package(Boost REQUIRED)/a\
           set(Boost_INCLUDE_DIRS /opt/homebrew/include)\
@@ -50,53 +50,47 @@ jobs:
           set(OPENGL_LIBRARIES "-framework OpenGLES")\
           ' CMakeLists.txt
 
-      # ৩. ক্রস-কম্পাইল কনফিগারেশন (প্ল্যাটফর্ম এরর বাইপাস করার জন্য Xcode জেনারেটর প্লাস আইওএস আর্কিটেকচার ফোর্স)
+      # ৩. ট্রিকি কনফিগারেশন: Ninja জেনারেটর ব্যবহার করে আইওএস SDK ফোর্স করা
+      # এটি "Unknown platform" এবং "BUNDLE DESTINATION" দুটি এররকেই একসাথে ফাঁকি দেবে
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          # এখানে আমরা ডিরেক্টলি iOS প্ল্যাটফর্মের নাম না দিয়ে Xcode কে arm64 এবং iOS SDK ব্যবহার করতে বাধ্য করছি
-          cmake .. -G Xcode \
+          cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_OSX_SYSROOT=iphoneos \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_PREFIX_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH="/opt/homebrew" \
             -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
             -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
-            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
-            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
-            -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=""
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH
 
-      # ৪. Xcode এর মাধ্যমে আইফোন প্ল্যাটফর্মের জন্য কম্পাইল করা
-      - name: Build App Using Xcode
+      # ৪. গেম কম্পাইল করা
+      - name: Build Project
         run: |
           cd build
-          cmake --build . --config ${{ env.BUILD_TYPE }} -- -sdk iphoneos
+          cmake --build . --config ${{ env.BUILD_TYPE }}
 
-      # ৫. বিল্ড হওয়া বাইনারিকে Sideloadable .ipa ফাইলে প্যাকেজিং করা
-      - name: Package into Sideloadable .ipa
+      # ৫. আউটপুট বাইনারিকে আইফোনের জন্য সাইডলোডযোগ্য .ipa ফাইলে রূপান্তর
+      - name: Package Package into Sideloadable .ipa
         run: |
-          mkdir -p build/Payload
+          mkdir -p build/Payload/rwgame.app
           
-          # এক্সিকিউটেবল বা অ্যাপ বান্ডেল খুঁজে বের করা
-          APP_PATH=$(find build -name "rwgame" -type f -o -name "*.app" -type d | head -n 1)
-          echo "Found Target Asset at: $APP_PATH"
+          # বিল্ড হওয়া মেইন এক্সিকিউটেবল ফাইলটি খুঁজে বের করা
+          BIN_PATH=$(find build -name "rwgame" -type f | head -n 1)
+          echo "Found Binary at: $BIN_PATH"
           
-          if [ -z "$APP_PATH" ]; then
-            echo "Error: No build asset found!"
+          if [ -z "$BIN_PATH" ]; then
+            echo "Error: Build output 'rwgame' not found!"
             exit 1
           fi
           
-          # যদি এটি ডিরেক্টরি (.app) না হয়ে শুধু ফাইল হয়, তবে আইওএস আর্কিটেকচারের জন্য একটি ডামি বান্ডেল স্ট্রাকচার তৈরি করা
-          if [ -d "$APP_PATH" ]; then
-            cp -r "$APP_PATH" build/Payload/
-          else
-            mkdir -p build/Payload/rwgame.app
-            cp "$APP_PATH" build/Payload/rwgame.app/rwgame
-            # একটি বেসিক Info.plist তৈরি করা যাতে সাইডলোড করার সময় TrollStore/AltStore চিনতে পারে
-            cat << 'EOF' > build/Payload/rwgame.app/Info.plist
+          # বাইনারিটি ডামি অ্যাপ স্ট্রাকচারে কপি করা
+          cp "$BIN_PATH" build/Payload/rwgame.app/rwgame
+          
+          # আইফোনে ইনস্টল করার জন্য একটি কাস্টম বা বেসিক Info.plist তৈরি করা
+          cat << 'EOF' > build/Payload/rwgame.app/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.txt">
           <plist version="1.0">
@@ -115,17 +109,22 @@ jobs:
               <string>1</string>
               <key>LSRequiresIPhoneOS</key>
               <true/>
+              <key>UIDeviceFamily</key>
+              <array>
+                  <integer>1</integer>
+                  <integer>2</integer>
+              </array>
           </dict>
           </plist>
           EOF
-          fi
           
+          # জিপ করে .ipa ফরম্যাট করা
           cd build
-          zip -r openrw-sideload.ipa Payload/
+          zip -r openrw-ios-sideload.ipa Payload/
 
-      # ৬. ফাইনাল .ipa ফাইলটি আপলোড করা
+      # ৬. ফাইনাল .ipa ফাইলটি GitHub থেকে ডাউনলোডের জন্য আপলোড করা
       - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
           name: openrw-ios-sideload
-          path: build/openrw-sideload.ipa
+          path: build/openrw-ios-sideload.ipa
