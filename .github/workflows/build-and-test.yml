@@ -28,37 +28,31 @@ jobs:
           brew update
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
-          # পাথ এবং বুস্টের গ্লোবাল এনভায়রনমেন্ট ফ্ল্যাগ সেট করা
+          # পাথ কনফিগারেশন
           echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
-          
-          # CMake-কে গ্লোবালি ফোর্স করা যেন সে বুস্টের নিজস্ব CMake কনফিগ ইগনোর করে
-          echo "Boost_NO_BOOST_CMAKE=ON" >> $GITHUB_ENV
 
-      # ২. CMake কনফিগারেশন (উইন্ডো মেথড বাইপাস)
+      # ২. সবচেয়ে গুরুত্বপূর্ণ ট্রিক: ঝামেলাকারী CMake কনফিগ ফাইলগুলো মুছে ফেলা
+      - name: Remove problematic Boost CMake configs
+        run: |
+          # Homebrew-এর বুস্টের ভেতরের ত্রুটিপূর্ণ cmake ফোল্ডারটি সম্পূর্ণ ডিলিট করে দেওয়া হচ্ছে
+          rm -rf $(brew --prefix boost)/lib/cmake/Boost-1.90.0
+          rm -rf $(brew --prefix boost)/lib/cmake/boost_*
+
+      # ৩. সহজ ও সাধারণ CMake কনফিগারেশন
       - name: Configure CMake
         run: |
           mkdir build
           cd build
-          
-          # এখানে আমরা সরাসরি CMake-কে বুস্টের লাইব্রেরি ডিরেক্টরি ইনজেক্ট করে দিচ্ছি 
-          # যেন সে কোনো ফাইল স্ক্যান না করে সরাসরি বাইনারি খুঁজে নেয়
-          cmake .. -G Ninja \
-            -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DBoost_NO_BOOST_CMAKE=ON \
-            -DBoost_NO_SYSTEM_PATHS=OFF \
-            -DBOOST_ROOT=$(brew --prefix boost) \
-            -DBOOST_LIBRARYDIR=$(brew --prefix boost)/lib \
-            -Dboost_system_DIR=$(brew --prefix boost)/lib/cmake/boost_system-1.90.0 \
-            -DBoost_INCLUDE_DIR=$(brew --prefix boost)/include
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
-      # ৩. প্রজেক্ট বিল্ড করা
+      # ৪. প্রজেক্ট বিল্ড করা
       - name: Build Project
         run: |
           cd build
           cmake --build . --config ${{ env.BUILD_TYPE }}
 
-      # ৪. বিল্ড হওয়া ফাইলটি আপলোড করা
+      # ৫. বিল্ড হওয়া ফাইলটি আপলোড করা
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
