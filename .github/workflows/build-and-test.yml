@@ -1,39 +1,20 @@
-name: iOS Build
-
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
-
-jobs:
-  ios-build:
-    name: Build iOS IPA
-    runs-on: macos-latest
-
-    steps:
-      - name: Checkout repository
+steps:
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      # CMake প্রজেক্ট হলে Xcode প্রজেক্ট জেনারেট করা
-      - name: Configure CMake for iOS
+      # macOS-এর জন্য প্রয়োজনীয় ডিপেনডেন্সি ইনস্টল করার স্টেপ
+      - name: Install Dependencies (macOS)
         run: |
-          mkdir build
-          cd build
-          cmake .. -G Xcode \
-            -DCMAKE_SYSTEM_NAME=iOS \
-            -DCMAKE_OSX_SYSROOT=iphoneos
+          brew update
+          brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
+          
+          # Qt5 এর পাথ সেট করা যেন CMake এটি খুঁজে পায়
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
 
-      # অ্যাপ বিল্ড এবং আর্কাইভ করা
-      - name: Build Xcode Project
+      - name: Configure and Build
         run: |
-          cd build
-          xcodebuild -target YourTargetName -configuration Release -sdk iphoneos
-
-      # বিল্ড ফাইল (Artifact) আপলোড করা যা আপনি ডাউনলোড করতে পারবেন
-      - name: Upload IPA Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build-app
-          path: build/Release-iphoneos/
+          mkdir build && cd build
+          cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build .
