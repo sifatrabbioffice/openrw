@@ -1,4 +1,4 @@
-name: Build and Test (macOS)
+name: Build iOS IPA (Sideloadable)
 
 on:
   push:
@@ -9,12 +9,11 @@ on:
 
 env:
   BUILD_TYPE: Release
-  ALSOFT_DRIVERS: "null"
 
 jobs:
-  macos-build:
-    name: macOS Build
-    runs-on: macos-latest
+  ios-build:
+    name: iOS IPA Build
+    runs-on: macos-14 # Apple Silicon (M1/M2) রানার ব্যবহার করা হচ্ছে দ্রুত বিল্ডের জন্য
 
     steps:
       - name: Checkout repository
@@ -22,57 +21,51 @@ jobs:
         with:
           submodules: recursive
 
-      # ১. ডিপেনডেন্সি ইনস্টল করা
-      - name: Install dependencies (Homebrew)
+      # ১. আইওএস বিল্ডের জন্য প্রয়োজনীয় টুলস এবং ডিপেনডেন্সি ইনস্টল (Vcpkg বা Homebrew দিয়ে)
+      - name: Install Build Tools
         run: |
           brew update
-          brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
-          
-          # CMAKE পাথ এবং গ্লোবাল লিঙ্কার ফ্ল্যাগ (LDFLAGS) সেট করা
-          # এটি ld লাইব্রেরি নট ফাউন্ড এররটি সরাসরি দূর করবে
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$(brew --prefix boost):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
-          echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
-          
-          # ম্যাকের গ্লোবাল কম্পাইলার ও লিঙ্কারকে বুস্টের পাথ ফোর্স করা
-          echo "LDFLAGS=-L$(brew --prefix boost)/lib" >> $GITHUB_ENV
-          echo "CPPFLAGS=-I$(brew --prefix boost)/include" >> $GITHUB_ENV
+          brew install cmake ninja boost glm toolchains
 
-      # ২. মেইন CMakeLists.txt ফাইলের বুস্ট কনফিগ প্যাচ করা
-      - name: Patch CMakeLists for Boost
-        run: |
-          # মেইন ফাইলের কম্পোনেন্ট রিকোয়েস্ট রিমুভ করে গ্লোবাল রিকোয়েস্ট করা
-          sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
-          
-          # গ্লোবাল বুস্ট ডিরেক্টরি এবং লিঙ্ক পাথ ইনজেক্ট করা
-          sed -i '' '/find_package(Boost REQUIRED)/a\
-          include_directories(${Boost_INCLUDE_DIRS})\
-          link_directories(${Boost_LIBRARY_DIRS})\
-          ' CMakeLists.txt
-          
-          # সাব-ফাইলগুলোতে ওল্ড নেমস্পেস টার্গেট বদলে স্ট্যান্ডার্ড নেমিংয়ে রূপান্তর
-          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::program_options/boost_program_options/g' {} +
-          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
-          find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
-
-      # ৩. পরিচ্ছন্ন CMake কনফিগারেশন (লিঙ্ক ডিরেক্টরি সরাসরি পাস করে)
-      - name: Configure CMake
+      # ২. CMake কে iOS আর্কিটেকচারে (arm64) কনফিগার করা
+      - name: Configure CMake for iOS
         run: |
           mkdir build
           cd build
-          cmake .. -G Ninja \
+          # Xcode এবং iOS SDK ব্যবহার করে arm64 আর্কিটেকচারে কনফিগারেশন
+          cmake .. -G Xcode \
+            -DCMAKE_SYSTEM_NAME=iOS \
+            -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
-            -DCMAKE_EXE_LINKER_FLAGS="-L/opt/homebrew/lib -L$(brew --prefix boost)/lib" \
-            -DCMAKE_SHARED_LINKER_FLAGS="-L/opt/homebrew/lib -L$(brew --prefix boost)/lib"
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
+            -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
+            -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=""
 
-      # ৪. প্রজেক্ট বিল্ড করা
-      - name: Build Project
+      # ৩. Xcode বিল্ড রান করা
+      - name: Build App Vector Using Xcode
         run: |
           cd build
-          cmake --build . --config ${{ env.BUILD_TYPE }}
+          cmake --build . --config ${{ env.BUILD_TYPE }} -- -sdk iphoneos
 
-      # ৫. বিল্ড হওয়া ফাইলটি আপলোড করা
-      - name: Upload Build Artifact
+      # ৪. বিল্ড হওয়া .app কে Sideloadable .ipa ফাইলে রূপান্তর করা (Ad-hoc প্যাকেজিং)
+      - name: Package Package into Sideloadable .ipa
+        run: |
+          mkdir -p build/Payload
+          
+          # আপনার প্রজেক্টের আউটপুট .app ফাইলটি Payload ফোল্ডারে কপি করা হচ্ছে
+          # দ্রষ্টব্য: আপনার প্রজেক্টের এক্সিকিউটেবল নাম অনুযায়ী 'rwgame.app' পরিবর্তন হতে পারে
+          APP_PATH=$(find build -name "*.app" -type d | head -n 1)
+          echo "Found App Bundle at: $APP_PATH"
+          
+          cp -r "$APP_PATH" build/Payload/
+          
+          # জিপ করে .ipa ফরম্যাটে রূপান্তর
+          cd build
+          zip -r openrw-sideload.ipa Payload/
+
+      # ৫. Sideload করার জন্য প্রস্তুত .ipa ফাইলটি আপলোড করা
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: openrw-macos-build
-          path: build/rwgame/rwgame
+          name: openrw-ios-sideload
+          path: build/openrw-sideload.ipa
