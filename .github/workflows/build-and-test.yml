@@ -21,17 +21,21 @@ jobs:
         with:
           submodules: recursive
 
-      # ১. ডিপেনডেন্সি ইনস্টল করা (ব্যর্থ প্যাকেজটি বাদ দেওয়া হয়েছে)
+      # ১. ডিপেনডেন্সি ইনস্টল করা
       - name: Install Dependencies
         run: |
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. CMakeLists.txt ফাইলের বুস্ট কনফিগ প্যাচ করা (আগের মতো)
+      # ২. CMakeLists.txt ফাইলের বুস্ট কনফিগ প্যাচ করা
       - name: Patch CMakeLists for Boost
         run: |
           sed -i '' 's/find_package(Boost.*COMPONENTS.*/find_package(Boost REQUIRED)/g' CMakeLists.txt
+          
+          # এখানে হার্ডকোড করে হোমব্রিউ-এর বুস্ট পাথ ইনজেক্ট করে দেওয়া হচ্ছে
           sed -i '' '/find_package(Boost REQUIRED)/a\
+          set(Boost_INCLUDE_DIRS /opt/homebrew/include)\
+          set(Boost_LIBRARY_DIRS /opt/homebrew/lib)\
           include_directories(${Boost_INCLUDE_DIRS})\
           link_directories(${Boost_LIBRARY_DIRS})\
           ' CMakeLists.txt
@@ -40,7 +44,7 @@ jobs:
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::system/boost_system/g' {} +
           find . -name "CMakeLists.txt" -exec sed -i '' 's/Boost::filesystem/boost_filesystem/g' {} +
 
-      # ৩. Xcode এবং iOS SDK ব্যবহার করে arm64 আর্কিটেকচারে কনফিগারেশন
+      # ৩. Xcode এবং iOS SDK কনফিগারেশন (উইথ হোমব্রিউ রুট পাথ ফোর্স)
       - name: Configure CMake for iOS
         run: |
           mkdir build
@@ -49,6 +53,11 @@ jobs:
             -DCMAKE_SYSTEM_NAME=iOS \
             -DCMAKE_OSX_ARCHITECTURES=arm64 \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
+            -DCMAKE_PREFIX_PATH="/opt/homebrew" \
+            -DCMAKE_FIND_ROOT_PATH="/opt/homebrew" \
+            -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+            -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH \
+            -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED=NO \
             -DCMAKE_XCODE_ATTRIBUTE_CODE_SIGN_IDENTITY="" \
             -DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=""
