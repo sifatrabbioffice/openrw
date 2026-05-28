@@ -29,10 +29,10 @@ jobs:
           brew install cmake ninja boost sdl2 openal-soft ffmpeg bullet glm freetype qt@5
           
           # পাথ কনফিগারেশন
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$(brew --prefix boost):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
+          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@5):$(brew --prefix openal-soft):$CMAKE_PREFIX_PATH" >> $GITHUB_ENV
           echo "PATH=$(brew --prefix qt@5)/bin:$PATH" >> $GITHUB_ENV
 
-      # ২. CMake কনফিগারেশন (Boost-এর জন্য সুনির্দিষ্ট ফ্ল্যাগসহ)
+      # ২. CMake কনফিগারেশন (Boost-এর কড়া সিকিউরিটি বাইপাসসহ)
       - name: Configure CMake
         run: |
           mkdir build
@@ -40,8 +40,10 @@ jobs:
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} \
             -DBoost_NO_BOOST_CMAKE=ON \
+            -DBoost_NO_SYSTEM_PATHS=OFF \
             -DBOOST_ROOT=$(brew --prefix boost) \
-            -DBOOST_LIBRARYDIR=$(brew --prefix boost)/lib
+            -DBOOST_LIBRARYDIR=$(brew --prefix boost)/lib \
+            -DBoost_DIR=/dev/null
 
       # ৩. প্রজেক্ট বিল্ড করা
       - name: Build Project
