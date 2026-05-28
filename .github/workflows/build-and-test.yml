@@ -27,7 +27,7 @@ jobs:
           brew update
           brew install cmake ninja boost glm ffmpeg sdl2 bullet freetype
 
-      # ২. CMakeLists.txt এবং প্ল্যাটফর্ম চেক প্যাচ করা
+      # ২. CMakeLists.txt, প্ল্যাটফর্ম চেক এবং বান্ডেল ডেস্টিনেশন প্যাচ করা
       - name: Patch CMakeLists and Platform Checks for iOS
         run: |
           # বুস্ট ফিক্স
@@ -50,10 +50,15 @@ jobs:
           set(OPENGL_LIBRARIES "-framework OpenGLES")\
           ' CMakeLists.txt
 
-          # প্ল্যাটফর্ম এরর ফিক্স: cmake_configure.cmake ফাইলের ভেতরের "Unknown platform" এরর লজিকটি স্কিপ করানো
-          # এটি iOS প্ল্যাটফর্ম ডিটেক্ট করলে তাকে ইন্টারনালি "macOS" বা "APPLE" ফ্লো ব্যবহার করতে বাধ্য করবে
+          # প্ল্যাটফর্ম এরর ফিক্স
           if [ -f cmake_configure.cmake ]; then
             sed -i '' 's/message(FATAL_ERROR "Unknown platform/message(STATUS "Forcing iOS Platform Build/g' cmake_configure.cmake
+          fi
+
+          # বান্ডেল ডেস্টিনেশন ফিক্স (ক্রিটিক্যাল এরর সমাধান)
+          # এটি cmake_configure.cmake ফাইলের install() ব্লকে BUNDLE DESTINATION ফোর্সবলি ইনজেক্ট করবে
+          if [ -f cmake_configure.cmake ]; then
+            sed -i '' 's/RUNTIME DESTINATION bin/RUNTIME DESTINATION bin BUNDLE DESTINATION bin/g' cmake_configure.cmake
           fi
 
       # ৩. Xcode জেনারেটর ব্যবহার করে আইওএস টার্গেটে কনফিগারেশন করা
@@ -89,7 +94,7 @@ jobs:
           echo "Found App Bundle at: $APP_PATH"
           
           if [ -z "$APP_PATH" ]; then
-            echo "Error: No .app bundle found! Build might have failed or generated a standard executable instead."
+            echo "Error: No .app bundle found!"
             exit 1
           fi
           
